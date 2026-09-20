@@ -141,6 +141,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
         currentAuthToken = dto.token;
       }
 
+      final fullInfo = dto.fullInformation;
+      if (fullInfo != null) {
+        final name = '${fullInfo['FullName'] ?? fullInfo['UserName'] ?? fullInfo['name'] ?? ''}'.trim();
+        if (name.isNotEmpty) {
+          currentDoctorName = name.startsWith('Dr.') ? name : 'Dr. $name';
+        }
+      }
+
       if (!mounted) return;
 
       Navigator.pushAndRemoveUntil(

@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+
+import '../api/api_client.dart';
+import '../api/api_endpoints.dart';
+import '../api/dtos.dart';
 import '../models/consultation_history.dart';
 import '../services/consultation_service.dart';
 import '../theme/app_theme.dart';
@@ -32,6 +36,8 @@ class _BeginConsultationScreenState extends State<BeginConsultationScreen>
   late TabController _tabController;
 
   final TextEditingController _notesController = TextEditingController();
+  List<PatientEpisodeDto> _apiEpisodes = [];
+  bool _isLoadingEpisodes = false;
 
   @override
   void initState() {
@@ -41,6 +47,8 @@ class _BeginConsultationScreenState extends State<BeginConsultationScreen>
       length: 3,
       vsync: this,
     );
+
+    _fetchPatientEpisodes();
   }
 
   @override
@@ -50,16 +58,48 @@ class _BeginConsultationScreenState extends State<BeginConsultationScreen>
     super.dispose();
   }
 
+  Future<void> _fetchPatientEpisodes() async {
+    final patientIdInt = int.tryParse(widget.patientId.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1;
+
+    setState(() {
+      _isLoadingEpisodes = true;
+    });
+
+    try {
+      final response = await apiClient.get(
+        ApiEndpoints.getPatientEpisodes,
+        query: {'patientID': patientIdInt},
+      );
+
+      final list = response['data'] as List? ?? response['episodes'] as List? ?? [];
+      final parsed = list.map((json) => PatientEpisodeDto.fromJson(json)).toList();
+
+      if (mounted) {
+        setState(() {
+          _apiEpisodes = parsed;
+        });
+      }
+    } catch (_) {
+      // Keep local service consultations on error
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingEpisodes = false;
+        });
+      }
+    }
+  }
+
   void _completeConsultation(ConsultationHistory history) {
-    // Save the consultation history.
+    // Save the consultation history locally
     consultationService.addConsultationHistory(history);
 
-    // Move the patient from Waiting to Completed.
+    // Move the patient from Waiting to Completed
     consultationService.completeConsultation(widget.patientId);
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Consultation completed successfully!'),
+        content: Text('Consultation prescription saved successfully!'),
         backgroundColor: AppTheme.primaryGreen,
       ),
     );
@@ -180,10 +220,98 @@ class _BeginConsultationScreenState extends State<BeginConsultationScreen>
                       horizontal: 16,
                       vertical: 8,
                     ),
-                    child: PreviousConsultationsView(
-                      patientId: widget.patientId,
-                      showHeader: false,
-                    ),
+                    child: _isLoadingEpisodes
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(32.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        : _apiEpisodes.isNotEmpty
+                            ? ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _apiEpisodes.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                                itemBuilder: (context, index) {
+                                  final ep = _apiEpisodes[index];
+                                  return Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: AppTheme.cardBorder),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              ep.treatmentDate ?? 'Past Visit',
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppTheme.primaryDarkGreen,
+                                              ),
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.accentGreen,
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Text(
+                                                'Episode #${ep.episodeId}',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppTheme.primaryDarkGreen,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        if (ep.primaryDesc != null && ep.primaryDesc!.isNotEmpty)
+                                          Text(
+                                            'Diagnosis: ${ep.primaryIcd != null ? '[${ep.primaryIcd}] ' : ''}${ep.primaryDesc}',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.textPrimary,
+                                            ),
+                                          ),
+                                        if (ep.chiefComplaint != null && ep.chiefComplaint!.isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Chief Complaint: ${ep.chiefComplaint}',
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              color: AppTheme.textSecondary,
+                                            ),
+                                          ),
+                                        ],
+                                        if (ep.doctorRemarks != null && ep.doctorRemarks!.isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Notes: ${ep.doctorRemarks}',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: AppTheme.textSecondary,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  );
+                                },
+                              )
+                            : PreviousConsultationsView(
+                                patientId: widget.patientId,
+                                showHeader: false,
+                              ),
                   ),
 
                   // Private Notes

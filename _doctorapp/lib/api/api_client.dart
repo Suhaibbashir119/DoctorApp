@@ -33,6 +33,7 @@ final MockApiClient _mockApiClient = MockApiClient();
 final HttpApiClient _httpApiClient = HttpApiClient(getToken: () => currentAuthToken);
 
 String? currentAuthToken;
+String currentDoctorName = '';
 
 /// Returns the current auth token (or null when the doctor is signed out).
 /// The [HttpApiClient] adds it as an `Authorization: Bearer <token>` header.

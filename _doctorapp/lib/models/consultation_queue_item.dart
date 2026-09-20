@@ -6,6 +6,7 @@ class ConsultationQueueItem {
   final String type;
   String status;
   final String time;
+  final String clinicName;
 
   ConsultationQueueItem({
     required this.patientId,
@@ -15,5 +16,6 @@ class ConsultationQueueItem {
     required this.type,
     required this.status,
     required this.time,
+    this.clinicName = '',
   });
 }

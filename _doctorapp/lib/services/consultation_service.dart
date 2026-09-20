@@ -48,6 +48,7 @@ class ConsultationService extends ChangeNotifier {
   void addPatient(
       Patient patient, {
         required String consultationType,
+        String clinicName = '',
       }) {
     _patients.add(patient);
 
@@ -60,6 +61,7 @@ class ConsultationService extends ChangeNotifier {
         type: consultationType,
         status: 'Waiting',
         time: _currentTime(),
+        clinicName: clinicName,
       ),
     );
 

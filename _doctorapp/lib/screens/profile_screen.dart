@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
-import 'profile/edit_profile_screen.dart';
-import 'profile/consultation_settings_screen.dart';
-import 'profile/abdm_credentials_screen.dart';
-import 'profile/security_settings_screen.dart';
-import 'profile/notification_settings_screen.dart';
 
+import '../api/api_client.dart';
+import '../api/api_endpoints.dart';
+import '../api/dtos.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
+import 'profile/abdm_credentials_screen.dart';
+import 'profile/consultation_settings_screen.dart';
+import 'profile/edit_profile_screen.dart';
+import 'profile/manage_clinics_screen.dart';
+import 'profile/notification_settings_screen.dart';
+import 'profile/security_settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -25,6 +29,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _consultationFee = 500;
 
   bool _notificationsEnabled = true;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDoctorProfile();
+  }
+
+  Future<void> _fetchDoctorProfile() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final response = await apiClient.get(ApiEndpoints.getDoctorDetails);
+      final dto = DoctorDetailsDto.fromJson(
+        response['data'] is Map ? response['data'] : response,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        if (dto.fullName.isNotEmpty) {
+          _doctorName = dto.fullName.startsWith('Dr.') ? dto.fullName : 'Dr. ${dto.fullName}';
+        }
+        if (dto.speciality.isNotEmpty) {
+          _qualification = dto.speciality;
+        }
+      });
+    } catch (_) {
+      // Keep existing values if offline or mock error
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   Future<void> _openEditProfile() async {
     final result = await Navigator.push<Map<String, String>>(
@@ -66,6 +109,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _endTime = result['endTime'] as String;
       _consultationFee = result['fee'] as int;
     });
+  }
+
+  void _showManageClinics() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ManageClinicsScreen(),
+      ),
+    );
   }
 
   void _showAbdmCredentials() {
@@ -125,6 +177,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         title: const Text('Doctor Profile'),
         actions: [
+          IconButton(
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.refresh),
+            tooltip: 'Refresh Profile',
+            onPressed: _fetchDoctorProfile,
+          ),
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Edit Profile',
@@ -284,13 +347,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   children: [
                     _buildSettingTile(
-                      icon: icsn.storefront,
+                      icon: Icons.storefront,
                       title: 'Manage OPD Clinics',
-                      subtitle: 'Manage clinics',
-                      onTap: (){
+                      subtitle: 'Add, edit, or remove clinic locations',
+                      onTap: _showManageClinics,
+                    ),
 
-                      }
-                    )
+                    const Divider(
+                      height: 1,
+                      color: AppTheme.cardBorder,
+                    ),
+
                     _buildSettingTile(
                       icon: Icons.access_time_filled,
                       title: 'Consultation Fees & Timings',

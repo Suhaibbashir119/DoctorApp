@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../api/api_client.dart';
+import '../api/api_endpoints.dart';
+import '../api/dtos.dart';
 import '../models/patient.dart';
-import '../theme/app_theme.dart';
 import '../services/consultation_service.dart';
+import '../theme/app_theme.dart';
 import 'begin_consultation_screen.dart';
 import 'patient_profile_screen.dart';
 
@@ -16,11 +19,14 @@ class PatientsScreen extends StatefulWidget {
 class _PatientsScreenState extends State<PatientsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedFilter = 'All Patients';
+  List<PatientSearchDto> _apiPatients = [];
+  bool _isSearchingApi = false;
 
   @override
   void initState() {
     super.initState();
     consultationService.addListener(_refresh);
+    _searchPatientsApi('');
   }
 
   void _refresh() {
@@ -36,11 +42,57 @@ class _PatientsScreenState extends State<PatientsScreen> {
     super.dispose();
   }
 
+  Future<void> _searchPatientsApi(String query) async {
+    setState(() {
+      _isSearchingApi = true;
+    });
+
+    try {
+      final response = await apiClient.get(
+        ApiEndpoints.getPatientsWithSearch,
+        query: {
+          'searchTerm': query,
+          'pageNum': 1,
+          'limit': 20,
+        },
+      );
+
+      final list = response['data'] as List? ?? response['patients'] as List? ?? [];
+      final parsed = list.map((json) => PatientSearchDto.fromJson(json)).toList();
+
+      if (mounted) {
+        setState(() {
+          _apiPatients = parsed;
+        });
+      }
+    } catch (_) {
+      // Fallback silently to local list on error or offline
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSearchingApi = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = _searchController.text.toLowerCase();
 
-    final filteredPatients = consultationService.patients.where((patient) {
+    // Map API search patients to Patient model if available, otherwise filter local list
+    final patientsList = _apiPatients.isNotEmpty
+        ? _apiPatients.map((p) {
+            return Patient(
+              id: 'PAT${p.id}',
+              name: p.fullName.isNotEmpty ? p.fullName : 'Patient #${p.id}',
+              age: 35, // default
+              gender: p.gender.isNotEmpty ? p.gender : 'Male',
+            );
+          }).toList()
+        : consultationService.patients;
+
+    final filteredPatients = patientsList.where((patient) {
       final matchesSearch =
           patient.name.toLowerCase().contains(query) ||
               patient.id.toLowerCase().contains(query);
@@ -94,24 +146,37 @@ class _PatientsScreenState extends State<PatientsScreen> {
             children: [
               TextField(
                 controller: _searchController,
-                onChanged: (_) => setState(() {}),
+                onChanged: (val) {
+                  setState(() {});
+                  _searchPatientsApi(val.trim());
+                },
                 decoration: InputDecoration(
                   hintText: 'Search by patient name or PAT ID...',
-                  prefixIcon: const Icon(
-                    Icons.search,
-                    color: AppTheme.textSecondary,
-                  ),
+                  prefixIcon: _isSearchingApi
+                      ? const Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.search,
+                          color: AppTheme.textSecondary,
+                        ),
                   suffixIcon: query.isNotEmpty
                       ? IconButton(
-                    icon: const Icon(
-                      Icons.clear,
-                      color: AppTheme.textSecondary,
-                    ),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() {});
-                    },
-                  )
+                          icon: const Icon(
+                            Icons.clear,
+                            color: AppTheme.textSecondary,
+                          ),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {});
+                            _searchPatientsApi('');
+                          },
+                        )
                       : null,
                 ),
               ),
@@ -167,122 +232,121 @@ class _PatientsScreenState extends State<PatientsScreen> {
               Expanded(
                 child: filteredPatients.isEmpty
                     ? const Center(
-                  child: Text(
-                    'No patients found',
-                    style: TextStyle(
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                )
-                    : ListView.separated(
-                  itemCount: filteredPatients.length,
-                  separatorBuilder: (_, __) =>
-                  const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final patient = filteredPatients[index];
-
-                    final consultation = consultationService
-                        .allConsultations
-                        .where(
-                          (item) => item.patientId == patient.id,
-                    )
-                        .toList();
-
-                    final item = consultation.isEmpty
-                        ? null
-                        : consultation.first;
-
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppTheme.cardBorder,
-                        ),
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        leading: CircleAvatar(
-                          radius: 22,
-                          backgroundColor: AppTheme.accentGreen,
-                          child: const Icon(
-                            Icons.person,
-                            color: AppTheme.primaryDarkGreen,
-                          ),
-                        ),
-                        title: Text(
-                          patient.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                        subtitle: Text(
-                          'ID: ${patient.id}  •  ${patient.age} Y, ${patient.gender}',
-                          style: const TextStyle(
-                            fontSize: 13,
+                        child: Text(
+                          'No patients found',
+                          style: TextStyle(
                             color: AppTheme.textSecondary,
                           ),
                         ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (item?.status == 'Waiting')
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.play_circle_fill,
-                                  color: AppTheme.primaryGreen,
-                                  size: 28,
-                                ),
-                                tooltip: 'Begin Consultation',
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          BeginConsultationScreen(
-                                            patientId: patient.id,
-                                            patientName: patient.name,
-                                            age: patient.age,
-                                            gender: patient.gender,
-                                            consultationType: item!.type
-                                          ),
-                                    ),
-                                  );
-                                },
+                      )
+                    : ListView.separated(
+                        itemCount: filteredPatients.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final patient = filteredPatients[index];
+
+                          final consultation = consultationService
+                              .allConsultations
+                              .where(
+                                (item) => item.patientId == patient.id,
+                              )
+                              .toList();
+
+                          final item = consultation.isEmpty
+                              ? null
+                              : consultation.first;
+
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppTheme.cardBorder,
                               ),
-                            if (item?.status == 'Completed')
-                              const Icon(
-                                Icons.check_circle,
-                                color: Colors.green,
-                              ),
-                            const Icon(
-                              Icons.chevron_right,
-                              color: AppTheme.textSecondary,
                             ),
-                          ],
-                        ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PatientProfileScreen(
-                                patientId: patient.id,
-                                patientName: patient.name,
-                                age: patient.age,
-                                gender: patient.gender,
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
                               ),
+                              leading: CircleAvatar(
+                                radius: 22,
+                                backgroundColor: AppTheme.accentGreen,
+                                child: const Icon(
+                                  Icons.person,
+                                  color: AppTheme.primaryDarkGreen,
+                                ),
+                              ),
+                              title: Text(
+                                patient.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'ID: ${patient.id}  •  ${patient.age} Y, ${patient.gender}',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (item?.status == 'Waiting')
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.play_circle_fill,
+                                        color: AppTheme.primaryGreen,
+                                        size: 28,
+                                      ),
+                                      tooltip: 'Begin Consultation',
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                BeginConsultationScreen(
+                                                  patientId: patient.id,
+                                                  patientName: patient.name,
+                                                  age: patient.age,
+                                                  gender: patient.gender,
+                                                  consultationType: item!.type,
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  if (item?.status == 'Completed')
+                                    const Icon(
+                                      Icons.check_circle,
+                                      color: Colors.green,
+                                    ),
+                                  const Icon(
+                                    Icons.chevron_right,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ],
+                              ),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => PatientProfileScreen(
+                                      patientId: patient.id,
+                                      patientName: patient.name,
+                                      age: patient.age,
+                                      gender: patient.gender,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           );
                         },
                       ),
-                    );
-                  },
-                ),
               ),
             ],
           ),
@@ -297,18 +361,57 @@ class _PatientsScreenState extends State<PatientsScreen> {
 
     String gender = 'Male';
     String consultationType = 'General Consultation';
+    ClinicDto? selectedClinic = _apiPatients.isNotEmpty ? null : null;
+    List<ClinicDto> availableClinics = [];
 
     showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Load clinics dynamically if empty
+            if (availableClinics.isEmpty) {
+              apiClient.get(ApiEndpoints.getClinics).then((res) {
+                final list = res['data'] as List? ?? res['clinics'] as List? ?? [];
+                final parsed = list.map((j) => ClinicDto.fromJson(j)).toList();
+                if (parsed.isNotEmpty && context.mounted) {
+                  setDialogState(() {
+                    availableClinics = parsed;
+                    selectedClinic = parsed.first;
+                  });
+                }
+              }).catchError((_) {});
+            }
+
             return AlertDialog(
               title: const Text('Add New Patient'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (availableClinics.isNotEmpty) ...[
+                      DropdownButtonFormField<ClinicDto>(
+                        value: selectedClinic,
+                        decoration: const InputDecoration(
+                          labelText: 'Assigned OPD Clinic',
+                        ),
+                        items: availableClinics.map((c) {
+                          return DropdownMenuItem<ClinicDto>(
+                            value: c,
+                            child: Text(c.name.isNotEmpty ? c.name : 'Main OPD Clinic'),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setDialogState(() {
+                              selectedClinic = value;
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
                     TextField(
                       controller: nameController,
                       decoration: const InputDecoration(
@@ -416,9 +519,18 @@ class _PatientsScreenState extends State<PatientsScreen> {
                     consultationService.addPatient(
                       patient,
                       consultationType: consultationType,
+                      clinicName: selectedClinic?.name ?? '',
                     );
 
                     Navigator.pop(context);
+
+                    final clinicName = selectedClinic?.name ?? 'Main Clinic';
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Patient $name added to $clinicName queue'),
+                        backgroundColor: AppTheme.primaryGreen,
+                      ),
+                    );
                   },
                   child: const Text('Add Patient'),
                 ),

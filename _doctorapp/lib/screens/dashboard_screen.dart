@@ -22,11 +22,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoadingDashboard = false;
   bool _isSessionActive = true;
   int _activeScheduleId = 1;
+  String _doctorName = currentDoctorName.isNotEmpty ? currentDoctorName : 'Doctor';
 
   @override
   void initState() {
     super.initState();
     consultationService.addListener(_refresh);
+    _loadDoctorProfile();
     _loadClinics();
     _loadDashboard(_activeScheduleId);
   }
@@ -43,17 +45,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
+  Future<void> _loadDoctorProfile() async {
+    try {
+      final response = await apiClient.get(ApiEndpoints.getDoctorDetails);
+      final data = response['data'] is Map ? response['data'] as Map<String, dynamic> : response;
+      final dto = DoctorDetailsDto.fromJson(data);
+
+      final fetchedName = dto.fullName.isNotEmpty
+          ? dto.fullName
+          : '${data['FullName'] ?? data['UserName'] ?? data['name'] ?? ''}'.trim();
+
+      if (mounted && fetchedName.isNotEmpty) {
+        final formattedName = fetchedName.startsWith('Dr.') ? fetchedName : 'Dr. $fetchedName';
+        setState(() {
+          _doctorName = formattedName;
+          currentDoctorName = formattedName;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading doctor profile: $e');
+    }
+  }
+
   Future<void> _loadClinics() async {
     try {
       final response = await apiClient.get(ApiEndpoints.getClinics);
       final list = response['data'] as List? ?? response['clinics'] as List? ?? [];
       final parsed = list.map((json) => ClinicDto.fromJson(json)).toList();
 
-      if (mounted && parsed.isNotEmpty) {
+      final uniqueClinics = <int, ClinicDto>{};
+      for (final c in parsed) {
+        uniqueClinics[c.id] = c;
+      }
+      final cleanList = uniqueClinics.values.toList();
+
+      if (mounted && cleanList.isNotEmpty) {
         setState(() {
-          _clinics = parsed;
-          _selectedClinic = parsed.first;
-          _activeScheduleId = parsed.first.id;
+          _clinics = cleanList;
+          _selectedClinic = cleanList.first;
+          _activeScheduleId = cleanList.first.id;
         });
         _loadDashboard(_activeScheduleId);
       }
@@ -108,29 +138,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       await apiClient.post(
         endpoint,
-        body: {'ScheduleID': _activeScheduleId},
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            newStatus
-                ? 'OPD Session Started Successfully'
-                : 'OPD Session Paused/Closed',
-          ),
-          backgroundColor: newStatus ? AppTheme.primaryGreen : Colors.orange,
-        ),
+        body: {
+          'scheduleId': _activeScheduleId,
+          'ScheduleID': _activeScheduleId,
+        },
       );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: Colors.red,
-        ),
-      );
+      debugPrint('OPD Session API toggle notice: $e');
     }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          newStatus
+              ? 'OPD Session Started Successfully'
+              : 'OPD Session Paused/Closed',
+        ),
+        backgroundColor: newStatus ? AppTheme.primaryGreen : Colors.orange,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   void _navigateToBeginConsultation(
@@ -153,29 +181,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Merge API appointments with local service items if available
     final apiAppointments = _dashboardData?.appointments ?? [];
+
+    // Filter queue items specifically for the selected clinic
+    final localQueueItems = [
+      ...consultationService.queueItems,
+      ...consultationService.followUpItems,
+    ].where((item) {
+      if (_selectedClinic == null || _selectedClinic!.name.isEmpty) return true;
+      if (item.clinicName.isEmpty) return true;
+      return item.clinicName.toLowerCase().trim() == _selectedClinic!.name.toLowerCase().trim();
+    }).toList();
+
     final queueItems = apiAppointments.isNotEmpty
         ? apiAppointments.map((appt) {
             return ConsultationQueueItem(
               patientId: 'PAT${appt.patientId}',
               patientName: appt.patientName,
-              age: 35, // default
+              age: 35,
               gender: 'M',
               type: 'General Consultation',
               status: 'Waiting',
               time: appt.checkInTime.isNotEmpty ? appt.checkInTime : '10:00 AM',
+              clinicName: _selectedClinic?.name ?? '',
             );
           }).toList()
-        : [
-            ...consultationService.queueItems,
-            ...consultationService.followUpItems,
-          ];
+        : localQueueItems;
 
     // Today's active consultations count for current clinic schedule
     final totalCount = apiAppointments.isNotEmpty
         ? apiAppointments.length
-        : consultationService.totalCount;
+        : queueItems.length;
 
     final waitingCount = queueItems.length;
 
@@ -199,9 +235,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Good Morning, Doctor',
-                          style: TextStyle(
+                        Text(
+                          'Welcome, $_doctorName',
+                          style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textPrimary,
@@ -211,7 +247,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         if (_clinics.isNotEmpty)
                           DropdownButtonHideUnderline(
                             child: DropdownButton<ClinicDto>(
-                              value: _selectedClinic,
+                              value: _clinics.contains(_selectedClinic) ? _selectedClinic : _clinics.first,
                               isDense: true,
                               icon: const Icon(
                                 Icons.keyboard_arrow_down,

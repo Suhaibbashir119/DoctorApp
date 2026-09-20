@@ -119,16 +119,25 @@ class ClinicDto {
   final String city;
   final String mobileNumber;
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ClinicDto && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+
   factory ClinicDto.fromJson(Map<String, dynamic> json) {
     return ClinicDto(
       id: readInt(json['ID'] ?? json['Id'] ?? json['id']),
-      name: readString(json['ClinicName']),
-      address: readString(json['Address']),
-      city: readString(json['City']),
-      mobileNumber: readString(json['MobileNumber'] ?? json['ContactNumer']),
+      name: readString(json['ClinicName'] ?? json['Name'] ?? json['name']),
+      address: readString(json['Address'] ?? json['address']),
+      city: readString(json['City'] ?? json['city']),
+      mobileNumber: readString(json['MobileNumber'] ?? json['ContactNumer'] ?? json['ContactNumber'] ?? json['mobileNumber']),
     );
   }
 }
+
 
 // ── Schedule (get-doctor-schedules) ──────────────────────────────────────
 
@@ -209,8 +218,8 @@ class DashboardStatusDto {
 
   factory DashboardStatusDto.fromJson(Map<String, dynamic> json) {
     return DashboardStatusDto(
-      status: readString(json['Status']),
-      count: readInt(json['StatusCount']),
+      status: readString(json['Status'] ?? json['status']),
+      count: readInt(json['StatusCount'] ?? json['statusCount'] ?? json['count']),
     );
   }
 }
@@ -245,18 +254,18 @@ class DashboardAppointmentDto {
 
   factory DashboardAppointmentDto.fromJson(Map<String, dynamic> json) {
     final patient = readMap(json['patient']);
-    final name = readString(patient['FullName']);
+    final name = readString(patient['FullName'] ?? json['PatientName'] ?? json['patientName'] ?? json['name']);
     return DashboardAppointmentDto(
       appointmentId:
-      readInt(json['ID'] ?? json['AppointmentId'] ?? json['AppointmentID']),
-      scheduleId: readInt(json['ScheduleID'] ?? json['ScheduleId']),
-      patientId: readInt(patient['ID']),
-      sequenceNo: readInt(json['SequenceNo']),
-      checkInTime: readString(json['CheckInTime']),
-      patientRemarks: readString(json['PatientRemarks']),
-      patientName: name.isEmpty ? 'Unknown patient' : name,
-      address: readString(patient['Address']),
-      city: readString(patient['City']),
+      readInt(json['ID'] ?? json['AppointmentId'] ?? json['AppointmentID'] ?? json['id']),
+      scheduleId: readInt(json['ScheduleID'] ?? json['ScheduleId'] ?? json['scheduleId']),
+      patientId: readInt(patient['ID'] ?? json['PatientId'] ?? json['patientId'] ?? json['id']),
+      sequenceNo: readInt(json['SequenceNo'] ?? json['sequenceNo']),
+      checkInTime: readString(json['CheckInTime'] ?? json['checkInTime'] ?? json['time']),
+      patientRemarks: readString(json['PatientRemarks'] ?? json['patientRemarks']),
+      patientName: name.isEmpty ? 'Patient' : name,
+      address: readString(patient['Address'] ?? json['Address']),
+      city: readString(patient['City'] ?? json['City']),
     );
   }
 }
@@ -273,12 +282,13 @@ class DoctorDashboardDto {
   final List<DashboardAppointmentDto> heldAppointments;
 
   factory DoctorDashboardDto.fromJson(Map<String, dynamic> json) {
+    final root = json['data'] is Map ? json['data'] as Map<String, dynamic> : json;
     return DoctorDashboardDto(
-      summary: readList(json['dashboardSummary'], DashboardStatusDto.fromJson),
+      summary: readList(root['dashboardSummary'] ?? json['dashboardSummary'], DashboardStatusDto.fromJson),
       appointments:
-      readList(json['appointments'], DashboardAppointmentDto.fromJson),
+      readList(root['appointments'] ?? json['appointments'], DashboardAppointmentDto.fromJson),
       heldAppointments:
-      readList(json['heldAppointments'], DashboardAppointmentDto.fromJson),
+      readList(root['heldAppointments'] ?? json['heldAppointments'], DashboardAppointmentDto.fromJson),
     );
   }
 }
