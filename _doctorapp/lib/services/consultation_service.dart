@@ -20,17 +20,17 @@ class ConsultationService extends ChangeNotifier {
   List<ConsultationQueueItem> get queueItems => _consultations
       .where(
         (item) =>
-    item.status == 'Waiting' &&
-        item.type != 'Follow-up',
-  )
+            (item.status == 'Waiting' || item.status == 'On Hold') &&
+            item.type != 'Follow-up',
+      )
       .toList();
 
   List<ConsultationQueueItem> get followUpItems => _consultations
       .where(
         (item) =>
-    item.status == 'Waiting' &&
-        item.type == 'Follow-up',
-  )
+            (item.status == 'Waiting' || item.status == 'On Hold') &&
+            item.type == 'Follow-up',
+      )
       .toList();
 
   List<ConsultationQueueItem> get completedItems => _consultations
@@ -83,16 +83,32 @@ class ConsultationService extends ChangeNotifier {
         .toList();
   }
 
-  void completeConsultation(String patientId) {
-    final index = _consultations.indexWhere(
-          (item) => item.patientId == patientId,
-    );
-
+  void updateAppointmentStatus(String patientId, String statusId) {
+    final index = _consultations.indexWhere((item) => item.patientId == patientId);
     if (index == -1) return;
 
-    _consultations[index].status = 'Completed';
+    if (statusId == 'HLD') {
+      _consultations[index].status = 'On Hold';
+    } else if (statusId == 'CKD') {
+      _consultations[index].status = 'Waiting';
+    } else if (statusId == 'CNL') {
+      _consultations.removeAt(index);
+    } else if (statusId == 'VST' || statusId == 'CMP') {
+      _consultations[index].status = 'Completed';
+    }
 
     notifyListeners();
+  }
+
+  void clearAllPatients() {
+    _patients.clear();
+    _consultations.clear();
+    _history.clear();
+    notifyListeners();
+  }
+
+  void completeConsultation(String patientId) {
+    updateAppointmentStatus(patientId, 'VST');
   }
 
   String _currentTime() {

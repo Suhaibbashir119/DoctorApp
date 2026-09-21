@@ -4,6 +4,7 @@ import 'theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  consultationService.clearAllPatients();
   runApp(const DoctorApp());
 }
 

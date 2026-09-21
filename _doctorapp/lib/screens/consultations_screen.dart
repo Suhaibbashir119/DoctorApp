@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../api/api_client.dart';
+import '../api/api_endpoints.dart';
 import '../models/consultation_queue_item.dart';
 import '../services/consultation_service.dart';
 import '../theme/app_theme.dart';
@@ -39,6 +41,42 @@ class _ConsultationsScreenState extends State<ConsultationsScreen>
     consultationService.removeListener(_refresh);
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _updateAppointmentStatus(ConsultationQueueItem item, String statusId) async {
+    final apptIdInt = int.tryParse(item.patientId.replaceAll(RegExp(r'[^0-9]'), '')) ?? 101;
+
+    // 1. Instantly update local UI state
+    consultationService.updateAppointmentStatus(item.patientId, statusId);
+
+    if (mounted) {
+      setState(() {});
+    }
+
+    try {
+      // 2. Send API request with both parameter casings
+      await apiClient.post(
+        ApiEndpoints.updateAppointmentStatus,
+        body: {
+          'AppointmentId': apptIdInt,
+          'appointmentId': apptIdInt,
+          'StatusId': statusId,
+          'statusId': statusId,
+        },
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Appointment status updated: ${item.status}'),
+          backgroundColor: AppTheme.primaryGreen,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Update appointment API notice: $e');
+    }
   }
 
   @override
@@ -239,6 +277,7 @@ class _ConsultationsScreenState extends State<ConsultationsScreen>
         required bool isWaiting,
       }) {
     final isFollowUp = item.type == 'Follow-up';
+    final isOnHold = item.status == 'On Hold';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -249,109 +288,143 @@ class _ConsultationsScreenState extends State<ConsultationsScreen>
           color: AppTheme.cardBorder,
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: AppTheme.accentGreen,
-            child: const Icon(
-              Icons.person,
-              color: AppTheme.primaryDarkGreen,
-            ),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: AppTheme.accentGreen,
+                child: const Icon(
+                  Icons.person,
+                  color: AppTheme.primaryDarkGreen,
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.patientName,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'ID: ${item.patientId}${item.clinicName.isNotEmpty ? '  •  ${item.clinicName}' : ''}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.type,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isFollowUp
+                            ? Colors.blue.shade700
+                            : AppTheme.primaryDarkGreen,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${item.status} at ${item.time}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isWaiting
+                            ? isOnHold
+                                ? Colors.orange.shade900
+                                : isFollowUp
+                                    ? Colors.blue.shade700
+                                    : Colors.orange.shade800
+                            : Colors.green.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              if (isWaiting)
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => BeginConsultationScreen(
+                          patientId: item.patientId,
+                          patientName: item.patientName,
+                          age: item.age,
+                          gender: item.gender == 'M'
+                              ? 'Male'
+                              : 'Female',
+                          consultationType: item.type,
+                        ),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryGreen,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize:
+                    MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Begin',
+                    style: TextStyle(
+                      fontSize: 12,
+                    ),
+                  ),
+                )
+              else
+                const Icon(
+                  Icons.check_circle,
+                  color: Colors.green,
+                ),
+            ],
           ),
 
-          const SizedBox(width: 12),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          if (isWaiting) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1, color: AppTheme.cardBorder),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Text(
-                  item.patientName,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
+                if (isOnHold)
+                  TextButton.icon(
+                    onPressed: () => _updateAppointmentStatus(item, 'CKD'),
+                    icon: const Icon(Icons.play_arrow, size: 16, color: AppTheme.primaryGreen),
+                    label: const Text('Resume Queue', style: TextStyle(fontSize: 12, color: AppTheme.primaryGreen)),
+                  )
+                else
+                  TextButton.icon(
+                    onPressed: () => _updateAppointmentStatus(item, 'HLD'),
+                    icon: const Icon(Icons.pause, size: 16, color: Colors.orange),
+                    label: const Text('Hold', style: TextStyle(fontSize: 12, color: Colors.orange)),
                   ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'ID: ${item.patientId}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  item.type,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isFollowUp
-                        ? Colors.blue.shade700
-                        : AppTheme.primaryDarkGreen,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${item.status} at ${item.time}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: isWaiting
-                        ? isFollowUp
-                        ? Colors.blue.shade700
-                        : Colors.orange.shade800
-                        : Colors.green.shade700,
-                  ),
+                TextButton.icon(
+                  onPressed: () => _updateAppointmentStatus(item, 'CNL'),
+                  icon: const Icon(Icons.close, size: 16, color: Colors.red),
+                  label: const Text('Cancel', style: TextStyle(fontSize: 12, color: Colors.red)),
                 ),
               ],
             ),
-          ),
-
-          const SizedBox(width: 8),
-
-          if (isWaiting)
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => BeginConsultationScreen(
-                      patientId: item.patientId,
-                      patientName: item.patientName,
-                      age: item.age,
-                      gender: item.gender == 'M'
-                          ? 'Male'
-                          : 'Female',
-                      consultationType: item.type,
-                    ),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryGreen,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                minimumSize: Size.zero,
-                tapTargetSize:
-                MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text(
-                'Begin',
-                style: TextStyle(
-                  fontSize: 12,
-                ),
-              ),
-            )
-          else
-            const Icon(
-              Icons.check_circle,
-              color: Colors.green,
-            ),
+          ],
         ],
       ),
     );

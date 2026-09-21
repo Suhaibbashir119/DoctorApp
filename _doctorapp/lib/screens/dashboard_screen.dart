@@ -182,38 +182,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final apiAppointments = _dashboardData?.appointments ?? [];
+    final selectedClinicName = _selectedClinic?.name.toLowerCase().trim() ?? '';
 
-    // Filter queue items specifically for the selected clinic
+    // 1. Get API appointments for current clinic
+    final apiQueueItems = apiAppointments.map((appt) {
+      return ConsultationQueueItem(
+        patientId: 'PAT${appt.patientId}',
+        patientName: appt.patientName,
+        age: 35,
+        gender: 'M',
+        type: 'General Consultation',
+        status: 'Waiting',
+        time: appt.checkInTime.isNotEmpty ? appt.checkInTime : '10:00 AM',
+        clinicName: _selectedClinic?.name ?? '',
+      );
+    }).toList();
+
+    // 2. Filter local queue items strictly by the selected clinic name
     final localQueueItems = [
       ...consultationService.queueItems,
       ...consultationService.followUpItems,
     ].where((item) {
-      if (_selectedClinic == null || _selectedClinic!.name.isEmpty) return true;
-      if (item.clinicName.isEmpty) return true;
-      return item.clinicName.toLowerCase().trim() == _selectedClinic!.name.toLowerCase().trim();
+      if (selectedClinicName.isEmpty) return true;
+      final itemClinic = item.clinicName.toLowerCase().trim();
+      if (itemClinic.isEmpty) return false; // Strictly require assigned clinic match
+      return itemClinic == selectedClinicName;
     }).toList();
 
-    final queueItems = apiAppointments.isNotEmpty
-        ? apiAppointments.map((appt) {
-            return ConsultationQueueItem(
-              patientId: 'PAT${appt.patientId}',
-              patientName: appt.patientName,
-              age: 35,
-              gender: 'M',
-              type: 'General Consultation',
-              status: 'Waiting',
-              time: appt.checkInTime.isNotEmpty ? appt.checkInTime : '10:00 AM',
-              clinicName: _selectedClinic?.name ?? '',
-            );
-          }).toList()
-        : localQueueItems;
+    // 3. Combine API appointments & local patients for selected clinic
+    final combinedQueue = <ConsultationQueueItem>[...apiQueueItems];
+    final existingIds = combinedQueue.map((e) => e.patientId).toSet();
+    for (final localItem in localQueueItems) {
+      if (!existingIds.contains(localItem.patientId)) {
+        combinedQueue.add(localItem);
+      }
+    }
 
-    // Today's active consultations count for current clinic schedule
-    final totalCount = apiAppointments.isNotEmpty
-        ? apiAppointments.length
-        : queueItems.length;
+    final queueItems = combinedQueue;
 
-    final waitingCount = queueItems.length;
+    // Today's total and waiting counts dynamically calculated for selected clinic
+    final totalCount = queueItems.length;
+    final waitingCount = queueItems.where((e) => e.status == 'Waiting' || e.status == 'On Hold').length;
 
     return Scaffold(
       backgroundColor: AppTheme.background,

@@ -162,24 +162,7 @@ class _MockDb {
       },
     ]);
 
-    final base = <List<Object>>[
-      // name, address, city, mobile, dob, gender, seq, status, remarks
-      ['MUDASIR MASOODI', 'Iqbal Nagar Sopore', 'Baramulla', '9858000001',
-        '1991-04-12', 'M', 1, 'CKD',
-        'Routine follow-up, review HbA1c glucose levels.'],
-      ['MEHNAZ HABIB', 'Jalalabad Sopore', 'Baramulla', '9858000002',
-        '1997-09-03', 'F', 2, 'CKD',
-        'Sudden hand tremors, heat intolerance and weight drop.'],
-      ['ALI SOFI', 'Arampora Sopore', 'Baramulla', '9858000003', '1963-01-20',
-        'M', 3, 'CKD', 'Hypertension quarterly review and prescription refill.'],
-      ['ZAHIDA BEGUM', 'Main Town Sopore', 'Baramulla', '9858000004',
-        '1980-07-08', 'F', 4, 'CKD',
-        'Acute joint stiffness and elevated serum uric acid.'],
-      ['BILAL AHMAD', 'Model Town Sopore', 'Baramulla', '9858000005',
-        '2001-11-15', 'M', 5, 'HLD', 'Stepped out, will return shortly.'],
-      ['RUKHSANA JAN', 'Doabgah Sopore', 'Baramulla', '9858000006',
-        '1975-02-27', 'F', 6, 'VST', 'Completed — thyroid function review.'],
-    ];
+    final base = <List<Object>>[];
 
     var aid = 4000;
     for (final r in base) {

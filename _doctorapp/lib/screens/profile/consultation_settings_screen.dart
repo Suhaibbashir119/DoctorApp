@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../api/api_client.dart';
+import '../../api/api_endpoints.dart';
+import '../../api/dtos.dart';
 import '../../theme/app_theme.dart';
 
 class ConsultationSettingsScreen extends StatefulWidget {
@@ -25,6 +28,9 @@ class _ConsultationSettingsScreenState
   late TimeOfDay _endTime;
   late final TextEditingController _feeController;
 
+  List<MonthlyScheduleItemDto> _schedules = [];
+  bool _isLoadingSchedules = false;
+
   @override
   void initState() {
     super.initState();
@@ -38,12 +44,40 @@ class _ConsultationSettingsScreenState
     _feeController = TextEditingController(
       text: widget.initialFee.toString(),
     );
+
+    _fetchDoctorSchedules();
   }
 
   @override
   void dispose() {
     _feeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchDoctorSchedules() async {
+    setState(() {
+      _isLoadingSchedules = true;
+    });
+
+    try {
+      final response = await apiClient.get(ApiEndpoints.getDoctorSchedules);
+      final list = response['data'] as List? ?? response['schedules'] as List? ?? [];
+      final parsed = list.map((json) => MonthlyScheduleItemDto.fromJson(json)).toList();
+
+      if (mounted) {
+        setState(() {
+          _schedules = parsed;
+        });
+      }
+    } catch (_) {
+      // Fallback silently if offline or mock
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingSchedules = false;
+        });
+      }
+    }
   }
 
   Future<void> _selectStartTime() async {
@@ -100,6 +134,19 @@ class _ConsultationSettingsScreenState
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Fees & Timings'),
+        actions: [
+          IconButton(
+            icon: _isLoadingSchedules
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.refresh),
+            tooltip: 'Refresh Schedules',
+            onPressed: _fetchDoctorSchedules,
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -108,7 +155,7 @@ class _ConsultationSettingsScreenState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Consultation Schedule',
+                'Default Consultation Schedule',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -214,6 +261,118 @@ class _ConsultationSettingsScreenState
                   ),
                 ),
               ),
+
+              const SizedBox(height: 24),
+
+              // Doctor Schedules Section
+              const Text(
+                'Registered Doctor OPD Schedules',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              if (_isLoadingSchedules)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (_schedules.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.cardBorder),
+                  ),
+                  child: const Text(
+                    'No upcoming OPD schedule slots registered.',
+                    style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                  ),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _schedules.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final item = _schedules[index];
+                    return Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.cardBorder),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentGreen,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.calendar_month,
+                              color: AppTheme.primaryDarkGreen,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${item.date} (${item.day})',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${item.startTime} - ${item.endTime} (${item.duration} mins)',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: item.status == 'ACT'
+                                  ? AppTheme.accentGreen
+                                  : Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              item.status == 'ACT' ? 'Active' : item.status,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: item.status == 'ACT'
+                                    ? AppTheme.primaryDarkGreen
+                                    : AppTheme.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
 
               const SizedBox(height: 28),
 
