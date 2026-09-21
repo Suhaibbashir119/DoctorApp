@@ -23,6 +23,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isSessionActive = true;
   int _activeScheduleId = 1;
   String _doctorName = currentDoctorName.isNotEmpty ? currentDoctorName : 'Doctor';
+  final Set<String> _dismissedPatientIds = {};
 
   @override
   void initState() {
@@ -205,7 +206,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ].where((item) {
       if (selectedClinicName.isEmpty) return true;
       final itemClinic = item.clinicName.toLowerCase().trim();
-      if (itemClinic.isEmpty) return false; // Strictly require assigned clinic match
+      if (itemClinic.isEmpty) return false;
       return itemClinic == selectedClinicName;
     }).toList();
 
@@ -218,7 +219,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
 
-    final queueItems = combinedQueue;
+    // Filter out dismissed patient IDs
+    final queueItems = combinedQueue
+        .where((item) => !_dismissedPatientIds.contains(item.patientId))
+        .toList();
 
     // Today's total and waiting counts dynamically calculated for selected clinic
     final totalCount = queueItems.length;
@@ -245,7 +249,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Welcome, $_doctorName',
+                          'Welcome, ${_doctorName.isNotEmpty ? _doctorName : 'Doctor'}',
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
@@ -633,6 +637,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ),
                                   ],
                                 ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close, size: 18, color: Colors.grey),
+                                tooltip: 'Remove from Queue',
+                                onPressed: () {
+                                  setState(() {
+                                    _dismissedPatientIds.add(item.patientId);
+                                  });
+                                  consultationService.updateAppointmentStatus(item.patientId, 'CNL');
+                                },
                               ),
                             ],
                           ),
